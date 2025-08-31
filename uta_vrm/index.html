@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<meta charset="utf-8" />
+
+	<style type="text/css">
+
+		div.bar {
+		  --volume: 0%;
+		  position: absolute;
+		  top: 20;
+		  left: 20;
+		  width: 200px;
+		  height: 10px;
+		  margin: 50px;
+		  background-color: #DDD;
+		}
+
+		div.bar::before {
+		   content: '';
+		   position: absolute;
+		   top: 0;
+		   bottom: 0;
+		   left: 0;
+		   width: var(--volume);
+		   background-color: green;
+		   transition: width 100ms linear;
+		}
+
+		button {
+		  margin-left: 50px;
+		}
+
+	</style>
+
+</head>
+
+<script type="importmap">
+	{
+		"imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.176.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.176.0/examples/jsm/",
+      "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js",
+	"@pixiv/three-vrm-animation": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-animation@3.4.2/lib/three-vrm-animation.module.js"
+		}
+	}
+
+
+</script>
+
+
+<body bgcolor="#ffffee">
+	<div class="bar" id="volume-visualizer"></div>
+	<button id="start">Start</button>
+	<button id="stop">Stop</button>
+
+
+<div id="canvas-frame" style="position: absolute; top: 300px;  left: 10px;" >
+</div>
+
+<div  style="position:absolute;top:70px;left:600px;" >
+<font size="2">
+
+
+<br />
+アニメーションのスピード<br />
+<input type="range" id="time_scale"  min="0" max="3" step="0.001" value="1.0" /><span id="time_scale_label">0</span><br />
+<br />
+
+VRMキャラクタの入れ替え
+<input id="read_file_vrm0" type="file" /><br />
+<br />
+<br />
+歌唱タイプの選択：
+<select id="type_select">
+	<option value="0">演歌</option>
+	<option value="1">オペラ</option>
+	<option value="2">アップロードファイル</option>
+</select>
+
+<br />
+<br />
+.vrmaファイルの確認
+s<select id="vrma_select"></select>
+<br />
+
+
+<!--
+character1 VRM
+<input id="read_file_vrm1" type="file" /><br>
+character2 VRM
+<input id="read_file_vrm2" type="file" /><br>
+-->
+
+</font>
+</div>
+
+<div  style="position:absolute;top:350px;left:600px;" >
+<font size="2">
+歌唱タイプで「アップロードファイル」を<br />
+選んだときの<br />
+.vrmaファイルの指定（サーバには保存されません）<br /><br />
+アップロード0 <span id="vrma0">sample0</span>
+<input id="upload_file_vrma0" type="file" /><br>
+アップロード1 <span id="vrma1">sample1</span>
+<input id="upload_file_vrma1" type="file" /><br>
+アップロード2 <span id="vrma2">sample2</span>
+<input id="upload_file_vrma2" type="file" /><br>
+アップロード3 <span id="vrma3">sample3</span>
+<input id="upload_file_vrma3" type="file" /><br>
+
+<br />
+level0:--<br />
+level1:<input type="text" id="level1" value="0.2"><br />
+level2:<input type="text" id="level2" value="0.3"><br />
+level3:<input type="text" id="level3" value="0.35"><br />
+
+</font>
+</div>
+
+
+
+<!--
+
+<div  style="position:absolute;top:170px;left:600px;" >
+<font size="2">
+
+character0 VRMA
+<input id="read_file_vrma0" type="file" /><br>
+character1 VRMA
+<input id="read_file_vrma1" type="file" /><br>
+character2 VRMA
+<input id="read_file_vrma2" type="file" /><br>
+
+
+
+</font>
+</div>
+
+<div  style="position:absolute;top:350px;left:600px;" >
+<font size="2">
+
+character0 BVH
+<input id="read_file_bvh0" type="file" /><br>
+character1 BVH
+<input id="read_file_bvh1" type="file" /><br>
+character2 BVH
+<input id="read_file_bvh2" type="file" /><br>
+
+</font>
+</div>
+
+-->
+
+<script>
+
+
+
+let song_pattern = [
+	[
+	'./enka0.vrma',
+	'./enka1.vrma',
+	'./enka2.vrma',
+	'./enka3.vrma'
+	],
+	[
+	'./opera0.vrma',
+	'./opera1.vrma',
+	'./opera2.vrma',
+	'./opera3.vrma'
+	]
+]
+
+
+
+
+	let  width       =    500;
+	let  height      =    300;
+
+	let characters_position = [ 
+		[ -0.1,  0.90,  -0.78],
+		[ -0.4,  0.84,  -0.42],
+		[ 0.22,  0.78,  -0.22]
+	];
+
+	let characters_rotation = [ 
+		[ 0,         2.93,    0],
+		[ 0,         4.670,   0],
+		[ 0.0349,    6.57,    0]
+	];
+
+	let camera_position = [ -0.02,   1.72,  2.12 ];
+	let camera_rotation = [ -0.28,  -0.02,  0    ]; 
+
+	let vrm_character_array  =  new Array();
+	let character_load_flg  =  -1;
+
+
+	let vrma_array = [[0,0,0,0], [0,0,0,0], [0,0,0,0]];
+	let vrma_counter = 0;
+	let vrma_array_name = [[0,0,0,0], [0,0,0,0], [0,0,0,0]];
+
+</script>
+
+
+
+<script type="module">
+
+	import * as THREE from 'three';
+	import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+	import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+	import { createVRMAnimationClip, VRMAnimationLoaderPlugin, VRMLookAtQuaternionProxy } from '@pixiv/three-vrm-animation';
+	import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+	let gltf_loader = new GLTFLoader();
+	gltf_loader.crossOrigin = 'anonymous';
+
+	gltf_loader.register((parser) => {
+		return new VRMLoaderPlugin(parser);
+	});
+
+	gltf_loader.register((parser) => {
+		return new VRMAnimationLoaderPlugin(parser);
+	});
+
+	let gv = THREE.VRM;
+	console.log("gv",gv);
+
+
+
+
+	let clock = new THREE.Clock();
+
+	let renderer = new THREE.WebGLRenderer();
+	renderer.setSize( window.innerWidth/2, window.innerHeight );
+	renderer.setPixelRatio( window.devicePixelRatio );
+
+	renderer.setClearColor(0xffffff);
+
+	document.body.appendChild( renderer.domElement );
+
+//	let camera = new THREE.PerspectiveCamera( 30.0, window.innerWidth / window.innerHeight, 0.1, 20.0 );
+//	camera.position.set( 0.0, 1.0, 5.0 );
+
+	let camera = new THREE.PerspectiveCamera(40.0,   (window.innerWidth/2) / window.innerHeight    , 0.1,  200.0 );
+	camera.position.set( camera_position[0],  camera_position[1], camera_position[2] );
+	camera.rotation.set( camera_rotation[0],  camera_rotation[1], camera_rotation[2] );
+
+	// controls
+	const controls = new OrbitControls( camera, renderer.domElement );
+	controls.screenSpacePanning = true;
+	controls.target.set( 0.0, 1.0, 0.0 );
+	controls.update();
+
+	// scene
+	let scene = new THREE.Scene();
+
+	// light
+	let light = new THREE.DirectionalLight( 0xffffff, Math.PI );
+	light.position.set( 1.0, 1.0, 1.0 ).normalize();
+	scene.add(light);
+
+	let currentVrm = undefined;
+	let currentVrmAnimation = undefined;
+
+	let next_currentMixer = undefined;
+
+
+
+
+function read_vrm_file_api(number,input){
+
+	let reader = new FileReader();
+
+	reader.addEventListener('load', function() {
+
+		// delete character
+		let old_vrm   =  vrm_character_array[number];
+		if(typeof old_vrm === "undefined"){
+		}else{
+			scene.remove(old_vrm.scene);
+		}
+
+		let vrm_file_content = reader.result;
+
+		character_load_flg = -1;
+		vrm_model_load(number,  vrm_file_content,     0,    3, 0  );
+
+		vrm_anime_check_change(character_change_sub , number );
+
+	}, true)
+	reader.readAsDataURL(input);
+}
+
+
+
+
+function read_vrma_file_api(number,input){
+
+	let reader = new FileReader();
+
+	reader.addEventListener('load', function() {
+
+////		let vrma_file_content = reader.result;
+
+		let blob = new Blob( [input], { type: "application/octet-stream" } );
+		let url = URL.createObjectURL(blob);
+
+console.log(url);
+
+		load(url);
+
+		// animate
+		clock.start();
+
+		setTimeout(animate,3000);
+
+	}, true)
+
+	reader.readAsText(input, 'UTF-8');
+
+}
+
+
+
+
+
+function upload_vrma_file_api(number,input){
+
+	let reader = new FileReader();
+
+	reader.addEventListener('load', function() {
+
+
+		let blob = new Blob( [input], { type: "application/octet-stream" } );
+		let url = URL.createObjectURL(blob);
+
+
+	static_load3(2, number, url, input.name );
+
+//ファイル名をuploadの横に付ける
+document.getElementById("vrma"+number).innerHTML = input.name;
+
+		
+
+	}, true)
+
+	reader.readAsText(input, 'UTF-8');
+
+}
+
+
+
+async function vrm_model_load(character_id, vrm_file_name, x,y,z){
+
+	let my_loader = gltf_loader;
+
+	my_loader.crossOrigin = 'anonymous';
+
+	my_loader.load(  vrm_file_name,  ( gltf ) => {
+
+				let my_vrm = gltf.userData.vrm;
+
+console.log("gltf.userData",gltf.userData);
+
+
+				character_load_flg = 0;
+
+				vrm_character_array[character_id] = my_vrm;
+
+
+
+
+				const lookAtQuatProxy = new VRMLookAtQuaternionProxy( my_vrm.lookAt );
+				lookAtQuatProxy.name = 'lookAtQuaternionProxy';
+				my_vrm.scene.add( lookAtQuatProxy );
+
+
+
+
+				scene.add( my_vrm.scene );
+
+				currentVrm = my_vrm;
+
+///				my_vrm.humanoid.getNormalizedBoneNode( 'hips' ).position.set(x,y,z);
+
+				initCharacter( my_vrm );
+				vrm_character_array[character_id] = my_vrm;
+
+
+		},
+		( progress ) => {
+			let percent = ( progress.loaded / progress.total ) *100 ;
+			console.log("Loading model..."+vrm_file_name+","+percent+"%" );
+		}
+	);
+
+}
+
+function body_rotation(bone_name, character_id, x,y,z){
+	let this_vrm = vrm_character_array[character_id];
+//	this_vrm.humanoid.getNormalizedBoneNode(bone_name).rotation.x = x;
+//	this_vrm.humanoid.getNormalizedBoneNode(bone_name).rotation.y = y;
+//	this_vrm.humanoid.getNormalizedBoneNode(bone_name).rotation.z = z;
+
+	this_vrm.humanoid.getRawBoneNode(bone_name).rotation.x = x;
+	this_vrm.humanoid.getRawBoneNode(bone_name).rotation.y = y;
+	this_vrm.humanoid.getRawBoneNode(bone_name).rotation.z = z;
+	renderer.render(scene, camera);
+}
+
+function initCharacter( vrm ) {
+//	vrm.humanoid.getNormalizedBoneNode( 'leftUpperArm' ).rotation.z   =   Math.PI /180 * 72;
+//	vrm.humanoid.getNormalizedBoneNode( 'rightUpperArm' ).rotation.z  =  -Math.PI /180 * 72;
+//	vrm.humanoid.getNormalizedBoneNode( 'leftLowerArm' ).rotation.z   =   Math.PI /180 * 15;
+//	vrm.humanoid.getNormalizedBoneNode( 'rightLowerArm' ).rotation.z  =  -Math.PI /180 * 15;
+
+	vrm.humanoid.getRawBoneNode( 'leftUpperArm' ).rotation.z   =   Math.PI /180 * 72;
+	vrm.humanoid.getRawBoneNode( 'rightUpperArm' ).rotation.z  =  -Math.PI /180 * 72;
+	vrm.humanoid.getRawBoneNode( 'leftLowerArm' ).rotation.z   =   Math.PI /180 * 15;
+	vrm.humanoid.getRawBoneNode( 'rightLowerArm' ).rotation.z  =  -Math.PI /180 * 15;
+
+	renderer.render(scene, camera);
+}
+
+function vrm_rot_Hips(character_id, x,y,z){
+	body_rotation('hips', character_id, x,y,z);
+}
+
+
+function vrm_anime_check_change(callback,number){
+	if(character_load_flg == -1){
+		setTimeout(vrm_anime_check_change, 700, callback,number);
+	}else{
+		callback(number);	
+	}
+}
+
+
+function character_change_sub( number ){
+	let this_vrm   =  vrm_character_array[number];
+	vrm_rot_Hips( number,  
+		characters_rotation[number][0],
+		characters_rotation[number][1],
+		characters_rotation[number][2]
+	);	
+	this_vrm.humanoid.getRawBoneNode('hips').position.set(
+		characters_position[number][0],
+		characters_position[number][1],
+		characters_position[number][2]
+	);
+	
+
+	renderer.render(scene, camera);
+}
+
+
+let exec_vrma = null;
+
+
+
+//function exec_vrma(level){
+
+
+function open_mouth(level){
+
+//console.log(currentVrm);
+//console.log("currentVrm.humanoid....",currentVrm.humanoid);
+//console.log(currentVrm.expressionManager);
+//console.log(currentVrm.expressionManager.mouthExpressionNames[0]);
+
+//console.log(currentVrm.expressionManager.setValue(currentVrm.expressionManager.mouthExpressionNames[0], 0.5)  );
+
+
+
+
+currentVrm.expressionManager.setValue(currentVrm.expressionManager.mouthExpressionNames[0], level )  
+
+
+//	currentVrm.blendShape.setValue(THREE.VRMSchema.BlendShapePresetName.A, level);
+//	currentVrm.blendShapeProxy.update();
+
+
+	renderer.render(scene, camera);
+
+}
+
+exec_vrma = (level)=>{
+
+
+	let my_level  =  level / 127;
+
+let level1 = Number(document.getElementById("level1").value)
+let level2 = Number(document.getElementById("level2").value)
+let level3 = Number(document.getElementById("level3").value)
+
+
+console.log("my_level=",my_level);
+
+	if( my_level  <  level1){
+		next_vrma(0);
+	}else if( my_level  <  level2){
+		next_vrma(1);
+		open_mouth(0.3);
+		setTimeout(open_mouth,1500, 0);
+
+
+	}else if( my_level  <  level3){
+		next_vrma(2);
+		open_mouth(0.4);
+		setTimeout(open_mouth,1500, 0);
+
+	}else{
+		next_vrma(3);
+		open_mouth(0.6);
+		setTimeout(open_mouth,1500, 0);
+
+	}
+
+};
+
+
+
+
+	// making list
+	let select_option_tags = document.getElementById("vrma_select");
+	let option_tag;
+	option_tag = document.createElement("option");
+	option_tag.innerHTML = "(not selected)";
+	select_option_tags.appendChild(option_tag);
+
+
+
+
+
+function static_vrm_load(number, url){
+	character_load_flg = -1;
+	vrm_model_load(number,  url,     0,    3, 0  );
+	vrm_anime_check_change(character_change_sub , number );
+}
+
+
+function static_load( url ) {
+
+	gltf_loader.load(url, ( gltf ) => {
+
+		vrma_array[vrma_counter] = gltf;
+console.log("vrma_counter=",vrma_counter);
+
+			// add tag
+			option_tag = document.createElement("option");
+			option_tag.value = vrma_counter;
+			option_tag.innerHTML = url;
+			select_option_tags.appendChild(option_tag);
+
+			vrma_counter++;
+		},
+		( progress ) => console.log( 'Loading model...', 100.0 * ( progress.loaded / progress.total ), '%' ),
+		( error ) => console.error( error )
+	);
+}
+
+
+function static_load2(type, number, url) {
+
+	gltf_loader.load(url, ( gltf ) => {
+
+		vrma_array[type][number] = gltf;
+		vrma_array_name[type][number] = url;
+console.log("type,number",type,number);
+
+
+
+		if(type==2 && number==3)tag_update();
+
+
+
+
+		},
+		( progress ) => console.log( 'Loading vrma2:', 100.0 * ( progress.loaded / progress.total ), '%' ),
+		( error ) => console.error( error )
+	);
+}
+
+
+
+
+function static_load3(type, number, url,filename) {
+
+	gltf_loader.load(url, ( gltf ) => {
+
+		vrma_array[type][number] = gltf;
+		vrma_array_name[type][number] = filename;
+console.log("type,number",type,number);
+
+
+
+///		if(type==1 && number==3)tag_update();
+
+
+			remove_vrma_list();
+//メニューのリセット
+		tag_update();
+
+
+		},
+		( progress ) => console.log( 'Loading vrma2:', 100.0 * ( progress.loaded / progress.total ), '%' ),
+		( error ) => console.error( error )
+	);
+}
+
+
+function remove_vrma_list(){
+	// making list
+	select_option_tags = document.getElementById("vrma_select");
+	// remove all options
+	while(select_option_tags.lastChild){
+		select_option_tags.removeChild(select_option_tags.lastChild);
+	}
+}
+
+
+	remove_vrma_list();
+
+
+
+
+
+
+
+
+	static_vrm_load(0,'./2023_04_c3_1.vrm');
+
+	static_load2(0, 0, song_pattern[0][0] );
+	static_load2(0, 1, song_pattern[0][1] );
+	static_load2(0, 2, song_pattern[0][2] );
+	static_load2(0, 3, song_pattern[0][3] );
+
+	static_load2(1, 0, song_pattern[1][0] );
+	static_load2(1, 1, song_pattern[1][1] );
+	static_load2(1, 2, song_pattern[1][2] );
+	static_load2(1, 3, song_pattern[1][3] );
+
+// エラー防止のために仮にファイルを入れておく
+	static_load2(2, 0, song_pattern[1][0] );
+	static_load2(2, 1, song_pattern[1][1] );
+	static_load2(2, 2, song_pattern[1][2] );
+	static_load2(2, 3, song_pattern[1][3] );
+
+
+//5段階ぐらいにしておいて，2つ分読み込む
+//プルダウンに応じて，サブメニュー的にリストが変わるようにしておくとか．
+
+function tag_update(){
+
+//タブ切り替え
+
+
+	// making list
+	select_option_tags = document.getElementById("vrma_select");
+
+//tag check
+	let tmp_tag = document.getElementById("type_select");
+
+console.log("tmp_tag",tmp_tag.selectedIndex, vrma_array_name[tmp_tag.selectedIndex]);
+
+// making list
+// check size
+	let list_size = vrma_array_name[tmp_tag.selectedIndex].length;
+	for(let i=0;i<list_size;i++){
+		let option_tag = document.createElement("option");
+		option_tag.innerHTML = vrma_array_name[tmp_tag.selectedIndex][i];
+		select_option_tags.appendChild(option_tag);
+	}
+}
+
+
+
+
+
+
+
+
+// test setTimeout(next_vrma, 10000, 0);
+
+
+
+
+
+	clock.start();
+
+	let animation_flg = 0;
+	animate();
+
+
+function next_vrma( number ) {
+
+	let tmp_tag = document.getElementById("type_select");
+	let num = tmp_tag.selectedIndex;
+
+
+
+
+	let next_vrmAnimations = vrma_array[num][number].userData.vrmAnimations;
+
+	let next_currentVrmAnimation = next_vrmAnimations[ 0 ] ?? null;
+	next_currentMixer = new THREE.AnimationMixer( currentVrm.scene );
+	let next_clip = createVRMAnimationClip( next_currentVrmAnimation, currentVrm );
+
+	next_currentMixer.clipAction( next_clip ).play();
+///	next_currentMixer.timeScale = params.timeScale;
+	next_currentMixer.timeScale = document.getElementById('time_scale').value;
+
+	animation_flg = 1; //ここでONにする
+
+
+}
+
+
+
+
+
+function animate() {
+
+	requestAnimationFrame( animate );
+
+	if(animation_flg == 0){
+	}else{
+
+		let deltaTime = clock.getDelta();
+
+		if ( next_currentMixer ) {
+			next_currentMixer.update( deltaTime );
+		}
+
+		if ( currentVrm ) {
+			currentVrm.update( deltaTime );
+		}
+
+		vrm_rot_Hips( 0,  
+			characters_rotation[0][0],
+			characters_rotation[0][1],
+			characters_rotation[0][2]
+		);	
+
+		renderer.render( scene, camera );
+	}
+}
+
+
+
+
+
+
+	document.getElementById('time_scale').addEventListener('change', function() {
+		next_currentMixer.timeScale   =   document.getElementById('time_scale').value;
+		document.getElementById('time_scale_label').innerHTML  =  document.getElementById('time_scale').value;
+
+	});
+
+
+
+
+
+
+window.addEventListener('DOMContentLoaded', function() {
+
+	document.getElementById('read_file_vrm0').addEventListener('change', function(){
+		let input = document.getElementById('read_file_vrm0').files[0];
+		read_vrm_file_api(0,input);
+	}, true)
+	
+	
+	
+	document.getElementById('time_scale_label').innerHTML  =  document.getElementById('time_scale').value;
+	
+	
+
+	document.getElementById('upload_file_vrma0').addEventListener('change', function(event){
+		let input = document.getElementById('upload_file_vrma0').files[0];
+		upload_vrma_file_api(0,input);
+	}, true)
+	document.getElementById('upload_file_vrma1').addEventListener('change', function(event){
+		let input = document.getElementById('upload_file_vrma1').files[0];
+		upload_vrma_file_api(1,input);
+	}, true)
+	document.getElementById('upload_file_vrma2').addEventListener('change', function(event){
+		let input = document.getElementById('upload_file_vrma2').files[0];
+		upload_vrma_file_api(2,input);
+	}, true)
+	document.getElementById('upload_file_vrma3').addEventListener('change', function(event){
+		let input = document.getElementById('upload_file_vrma3').files[0];
+		upload_vrma_file_api(3,input);
+	}, true)
+	
+	
+	
+	
+/*
+	document.getElementById('read_file_vrm1').addEventListener('change', function(){
+		let input = document.getElementById('read_file_vrm1').files[0];
+		read_vrm_file_api(1,input);
+	}, true)
+	document.getElementById('read_file_vrm2').addEventListener('change', function(){
+		let input = document.getElementById('read_file_vrm2').files[0];
+		read_vrm_file_api(2,input);
+	}, true)
+
+
+	document.getElementById('read_file_vrma0').addEventListener('change', function(event){
+		let input = document.getElementById('read_file_vrma0').files[0];
+		read_vrma_file_api(0,input);
+	}, true)
+	document.getElementById('read_file_vrma1').addEventListener('change', function(event){
+		let input = document.getElementById('read_file_vrma1').files[0];
+		read_vrma_file_api(1,input);
+	}, true)
+	document.getElementById('read_file_vrma2').addEventListener('change', function(event){
+		let input = document.getElementById('read_file_vrma2').files[0];
+		read_vrma_file_api(2,input);
+	}, true)
+*/
+	
+	
+
+})
+
+
+document.getElementById('vrma_select').addEventListener('change', ()=> {
+
+	let tmp_tag = document.getElementById("vrma_select");
+
+	if(tmp_tag.selectedIndex==0){return;}
+	next_vrma(tmp_tag.selectedIndex-1);
+
+});
+
+document.getElementById('type_select').addEventListener('change', ()=> {
+
+	let tmp_tag = document.getElementById("type_select");
+
+	remove_vrma_list();
+	tag_update();
+
+});
+
+
+
+
+
+  let volumeInterval = null;
+  const volumeVisualizer = document.getElementById('volume-visualizer');
+  const startButton = document.getElementById('start');
+  const stopButton = document.getElementById('stop');
+
+
+    let audioStream;
+    let audioContext;
+    let audioSource;
+
+    let analyser;
+    let volumes;
+
+let delete_a;
+
+
+	my_audio();
+
+
+
+async function my_audio(){
+
+     audioStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true
+      }
+    });
+
+
+    audioContext = new AudioContext();
+    audioSource = audioContext.createMediaStreamSource(audioStream);
+    analyser = audioContext.createAnalyser();
+
+console.log("ac,as,al",audioContext);
+console.log("ac,as,al",audioSource);
+console.log("ac,as,al",analyser);
+
+    analyser.fftSize = 512;
+    analyser.minDecibels = -127;
+    analyser.maxDecibels = 0;
+    analyser.smoothingTimeConstant = 0.4;
+    audioSource.connect(analyser);
+    volumes = new Uint8Array(analyser.frequencyBinCount);
+
+
+}
+
+
+let e_counter=0;
+
+    function volumeCallback(){
+
+
+//      console.log("check vol",volumes);
+//      console.log(volumes,analyser);
+
+      analyser.getByteFrequencyData(volumes);
+      let volumeSum  =  0;
+
+
+
+
+      for(const volume of volumes)
+        volumeSum += volume;
+
+
+      let  averageVolume = volumeSum / volumes.length;
+
+
+averageVolume *=2;
+
+// averageVolumeを使えばいい
+//console.log("averageVolume=",averageVolume)
+
+// 10回に１回に
+if(e_counter > 10){
+//前の動作が残っていたら消すようにする？
+if(delete_a != null){clearTimeout(delete_a);}
+
+    delete_a = setTimeout(exec_vrma,0,averageVolume);
+	e_counter =0;
+}
+
+e_counter++;
+
+      // Value range: 127 = analyser.maxDecibels - analyser.minDecibels;
+      volumeVisualizer.style.setProperty('--volume', (averageVolume * 100 / 127) + '%');
+    };
+
+
+//  } catch(e) {
+//    console.error('Failed to initialize volume visualizer, simulating instead...', e);
+//    // Simulation
+//    //TODO remove in production!
+//    let lastVolume = 50;
+//    volumeCallback = () => {
+//      const volume = Math.min(Math.max(Math.random() * 100, 0.8 * lastVolume), 1.2 * lastVolume);
+//      lastVolume = volume;
+//      volumeVisualizer.style.setProperty('--volume', volume + '%');
+//    };
+//  }
+
+
+
+
+
+
+
+
+startButton.addEventListener('click', () => {
+//	animation_flg = 1;
+	volumeInterval = setInterval(volumeCallback,     100      );
+});
+
+
+stopButton.addEventListener('click', () => {
+	animation_flg = 0;
+	if(volumeInterval !== null) {
+		clearInterval(volumeInterval);
+		volumeInterval = null;
+	}
+});
+
+
+</script>
+
+
+
+</body>
+</html>
+
+
